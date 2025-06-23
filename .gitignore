@@ -121,7 +121,7 @@ dmypy.json
 *.npy
 
 data
-visualizations
+visualizations/*
 results
 training_log.txt
 /result_agg

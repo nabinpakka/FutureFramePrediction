@@ -25,7 +25,7 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self,C_hid, C_out, N_S):
+    def __init__(self, C_hid, C_out, N_S):
         super(Decoder,self).__init__()
         strides = stride_generator(N_S, reverse=True)
         self.dec = nn.Sequential(

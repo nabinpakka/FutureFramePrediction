@@ -1,3 +1,5 @@
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import os.path as osp
 import json
 import pickle
@@ -24,10 +26,12 @@ class Exp:
         self.config = self.args.__dict__
         self.device = self._acquire_device()
 
+        self.output_frames = int(self.config.get("output_frames"))
+
         self._preparation()
         print_log(output_namespace(self.args))
 
-        self._get_data()
+        # self._get_data()
         self._select_optimizer()
         self._select_criterion()
 
@@ -45,14 +49,13 @@ class Exp:
     def _acquire_device(self):
         if self.args.use_gpu:
             # change this argument to change visibility of GPU to this program
-            self.args.gpu = 1  # Ensure GPU 0 is selected
-            os.environ["CUDA_VISIBLE_DEVICES"] = str(self.args.gpu)
-            device = torch.device('cuda:0')  
+            device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")  
             print("Device is..", device)
             print_log('Use GPU: 0')
         else:
             device = torch.device('cpu')
             print_log('Use CPU')
+        print("device: ", device)
         return device
 
     def _preparation(self):
@@ -94,7 +97,10 @@ class Exp:
 
     def _get_data(self):
         config = self.args.__dict__
-        self.train_loader, self.vali_loader, self.test_loader, self.data_mean, self.data_std = load_data(**config)
+        in_shape = list(config.get("in_shape"))
+        input_frames = in_shape[0]
+
+        self.train_loader, self.vali_loader, self.test_loader, self.data_mean, self.data_std = load_data(input_frames = input_frames, **config)
         self.vali_loader = self.test_loader if self.vali_loader is None else self.vali_loader
 
     def _select_optimizer(self):
@@ -137,12 +143,17 @@ class Exp:
                 for batch in train_pbar:
                     batch_x, batch_y = batch
                     print(f"Batch x shape: {batch_x.shape}, Batch y shape: {batch_y.shape}")
+
+                    # getting length of input frames
+                    input_frames = batch_x.shape[1]
                     
                     self.optimizer.zero_grad()
                     batch_x, batch_y = batch_x.to(self.device), batch_y.to(self.device)
                     pred_y = self.model(batch_x)
 
-                    loss = self.criterion(pred_y, batch_y)
+
+
+                    loss = self.criterion(pred_y[:, -self.output_frames: ,:,:], batch_y)
                     train_loss.append(loss.item())
                     train_pbar.set_description('train loss: {:.4f}'.format(loss.item()))
 
@@ -229,10 +240,13 @@ class Exp:
         save_frame_images(true_frames, 'true')
 
         # Create comparison images
-        for i in range(len(pred_frames)):
+        for i in range(len(true_frames)):
             # Convert frames to uint8
+            print("input frames: ", input_frames.shape)
             input_img = enhance_rgb_frame(input_frames[i])
+            print("Pred frames: ", pred_frames.shape)
             pred_img = enhance_rgb_frame(pred_frames[i])
+            print("True frames: ", true_frames.shape)
             true_img = enhance_rgb_frame(true_frames[i])
             
             # Create side-by-side comparison
@@ -246,7 +260,7 @@ class Exp:
         comparison_video = cv2.VideoWriter(osp.join(video_path, f'comparison_{batch_idx}.mp4'), 
                                          fourcc, 5, (width*3, height))
         
-        for i in range(len(pred_frames)):
+        for i in range(len(true_frames)):
             # Convert frames to RGB format ready for display
             input_img = enhance_rgb_frame(input_frames[i])
             pred_img = enhance_rgb_frame(pred_frames[i])
@@ -288,8 +302,8 @@ class Exp:
                 batch_x = batch_x.to(self.device)
                 batch_y = batch_y.to(self.device)
                 
-                pred_y = self.model(batch_x)
-                
+                pred_y = self.model(batch_x)[:,-self.output_frames:,:,: ]
+                batch_x = batch_x[:, -self.output_frames:,:,:]
                
                 self.visualize_predictions(
                     batch_x, batch_y, pred_y,
@@ -338,7 +352,7 @@ class Exp:
                     batch_y = batch_y.to(self.device)
                     
                     # Generate predictions
-                    pred_y = self.model(batch_x)
+                    pred_y = self.model(batch_x)[:, -self.output_frames:,:,:]
                     
                     # Calculate loss
                     loss = self.criterion(pred_y, batch_y)
