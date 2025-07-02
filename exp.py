@@ -111,8 +111,8 @@ class Exp:
         return self.optimizer
 
     def _select_criterion(self):
-        # self.criterion = torch.nn.MSELoss()
-        self.criterion = nn.SmoothL1Loss()
+        self.criterion = torch.nn.MSELoss()
+        # self.criterion = nn.SmoothL1Loss()
 
     def _save(self, name=''):
         torch.save(self.model.state_dict(), os.path.join(
@@ -153,7 +153,7 @@ class Exp:
 
 
 
-                    loss = self.criterion(pred_y[:, -self.output_frames: ,:,:], batch_y)
+                    loss = self.criterion(pred_y[:, :self.output_frames ,:,:], batch_y)
                     train_loss.append(loss.item())
                     train_pbar.set_description('train loss: {:.4f}'.format(loss.item()))
 
@@ -302,8 +302,8 @@ class Exp:
                 batch_x = batch_x.to(self.device)
                 batch_y = batch_y.to(self.device)
                 
-                pred_y = self.model(batch_x)[:,-self.output_frames:,:,: ]
-                batch_x = batch_x[:, -self.output_frames:,:,:]
+                pred_y = self.model(batch_x)[:,:self.output_frames,:,: ]
+                batch_x = batch_x[:, :self.output_frames,:,:]
                
                 self.visualize_predictions(
                     batch_x, batch_y, pred_y,
@@ -352,7 +352,7 @@ class Exp:
                     batch_y = batch_y.to(self.device)
                     
                     # Generate predictions
-                    pred_y = self.model(batch_x)[:, -self.output_frames:,:,:]
+                    pred_y = self.model(batch_x)[:, :self.output_frames,:,:]
                     
                     # Calculate loss
                     loss = self.criterion(pred_y, batch_y)

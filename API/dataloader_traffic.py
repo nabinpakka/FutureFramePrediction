@@ -77,8 +77,9 @@ def process_video_with_yolo(video_path, yolo_model_path):
             mask[y1:y2, x1:x2] = 255
 
         frame_buffer.append((frame, mask))
-
-        if len(frame_buffer) == window_size and not is_agg:
+        if is_agg:
+            frames.append(frame)
+        elif len(frame_buffer) == window_size:
             # Generate the aggregated mask from all frames in the buffer
             aggregated_mask = frame_buffer[0][1]
             for i in range(1, window_size):
@@ -119,8 +120,7 @@ def process_video_with_yolo(video_path, yolo_model_path):
 
             aggregated_count += 1
             frame_buffer.clear()  # Reset buffer for the next batch
-        else:
-            frames.append(frame)
+
         frame_count += 1
 
     cap.release()
@@ -182,7 +182,7 @@ def process_video(
             break
 
         frames.append(frame)
-        res = model.predict(frame, classes=[3,5,8], conf=0.4, device=1)
+        res = model.predict(frame, classes=[3,5,8], conf=0.4)
         boxes = [
             (int(b.xyxy[0][0]), int(b.xyxy[0][1]),
              int(b.xyxy[0][2]), int(b.xyxy[0][3]))
@@ -263,14 +263,14 @@ def process_video(
 
 
 class TrafficVideoDataset(Dataset):
-    def __init__(self, data, input_frames=20, output_frames=20, lead_time=10):
+    def __init__(self, data, input_frames=20, output_frames=20, lead_time=10, stride = 2):
         super(TrafficVideoDataset, self).__init__()
         self.data = torch.tensor(data, dtype=torch.float32)
         self.input_frames = input_frames
         self.output_frames = output_frames
         self.lead_time = lead_time
 
-        self.step = 2  # STEP SIZE
+        self.stride = 2  # STEP SIZE
         
         # Add mean and std attributes
         self.mean = torch.mean(self.data).item()
@@ -281,11 +281,11 @@ class TrafficVideoDataset(Dataset):
         
     def __len__(self):
         total_frames = self.input_frames + self.output_frames + self.lead_time
-        return max(0, (len(self.data) - total_frames) // self.step)
+        return max(0, (len(self.data) - total_frames) // self.stride)
         # return max(0, len(self.data) - (self.input_frames + self.output_frames + self.lead_time))
     
     def __getitem__(self, index):
-        index = index * self.step  # Use step size to skip frames
+        index = index * self.stride  # Use step size to skip frames
         print("The index is: ", index)
 
         # Get sequences from the dataset
@@ -318,11 +318,14 @@ def load_data(batch_size, val_batch_size, data_root, num_workers, input_frames, 
     
     print(f"DEBUG: Total frames processed: {len(frames)}")
     
-    lead_time = 30
+    lead_time = 0
     # Split data
-    train_size = int(0.6 * len(frames))
-    val_size = int(0.2 * len(frames))
-    test_size = len(frames) - train_size - val_size
+    # need to change size of train/test/val according to the input size and stride
+    stride = 2 
+    data_length = len(frames) // stride
+    train_size = int(0.6 * data_length)
+    val_size = int(0.2 * data_length)
+    test_size = data_length - train_size - val_size
     
     train_frames = frames[:train_size - lead_time]
     val_frames = frames[train_size:train_size + val_size - lead_time]
@@ -331,9 +334,9 @@ def load_data(batch_size, val_batch_size, data_root, num_workers, input_frames, 
     print(f"DEBUG: Split sizes - Train: {len(train_frames)}, Val: {len(val_frames)}, Test: {len(test_frames)}")
     
     # Create datasets
-    train_dataset = TrafficVideoDataset(train_frames, input_frames=input_frames, output_frames=output_frames, lead_time = lead_time)
-    val_dataset = TrafficVideoDataset(val_frames, input_frames=input_frames, output_frames=output_frames, lead_time = lead_time)
-    test_dataset = TrafficVideoDataset(test_frames, input_frames=input_frames, output_frames=output_frames, lead_time = lead_time)
+    train_dataset = TrafficVideoDataset(train_frames, input_frames=input_frames, output_frames=output_frames, lead_time = lead_time, stride = stride)
+    val_dataset = TrafficVideoDataset(val_frames, input_frames=input_frames, output_frames=output_frames, lead_time = lead_time, stride = stride)
+    test_dataset = TrafficVideoDataset(test_frames, input_frames=input_frames, output_frames=output_frames, lead_time = lead_time, stride = stride)
 
     print(f"DEBUG: Dataset lengths - Train: {len(train_dataset)}, Val: {len(val_dataset)}, Test: {len(test_dataset)}")
     
