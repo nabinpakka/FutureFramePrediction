@@ -13,7 +13,7 @@ def create_parser():
     # Set-up parameters
     parser.add_argument('--device', default='cuda', type=str, help='Name of device to use for tensor computations (cuda/cpu/mps)')
     parser.add_argument('--res_dir', default='./results', type=str)
-    parser.add_argument('--ex_name', default='LT0_input10_sliding2', type=str)
+    parser.add_argument('--ex_name', default='LT0_input20__output10_sliding2', type=str)
     parser.add_argument('--use_gpu', default=True, type=bool)
     parser.add_argument('--gpu', default=1, type=int)
     parser.add_argument('--seed', default=1, type=int)
@@ -26,7 +26,7 @@ def create_parser():
     parser.add_argument('--num_workers', default=8, type=int)
 
     # model parameters
-    parser.add_argument('--in_shape', default=[10, 3, 512, 512], type=int, nargs='*')  
+    parser.add_argument('--in_shape', default=[20, 3, 512, 512], type=int, nargs='*')  
     parser.add_argument('--output_frames', default=10, type=int, help="Output frames")
     parser.add_argument('--hid_S', default=64, type=int)  
     parser.add_argument('--hid_T', default=256, type=int) 
@@ -35,7 +35,7 @@ def create_parser():
     parser.add_argument('--groups', default=8, type=int)
 
     # Training parameters
-    parser.add_argument('--epochs', default=2, type=int)
+    parser.add_argument('--epochs', default=24, type=int)
     parser.add_argument('--log_step', default=1, type=int)
     parser.add_argument('--lr', default=0.0001, type=float, help='Learning rate')
     parser.add_argument('--lt', default=10, type=int, help = "Lead time in seconds")

@@ -1,5 +1,5 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 import os.path as osp
 import json
 import pickle
@@ -153,7 +153,7 @@ class Exp:
 
 
 
-                    loss = self.criterion(pred_y[:, :self.output_frames ,:,:], batch_y)
+                    loss = self.criterion(pred_y[:, :batch_y.shape[1] ,:,:], batch_y)
                     train_loss.append(loss.item())
                     train_pbar.set_description('train loss: {:.4f}'.format(loss.item()))
 
@@ -302,8 +302,8 @@ class Exp:
                 batch_x = batch_x.to(self.device)
                 batch_y = batch_y.to(self.device)
                 
-                pred_y = self.model(batch_x)[:,:self.output_frames,:,: ]
-                batch_x = batch_x[:, :self.output_frames,:,:]
+                pred_y = self.model(batch_x)[:,:batch_y.shape[1],:,: ]
+                batch_x = batch_x[:, :batch_y.shape[1],:,:]
                
                 self.visualize_predictions(
                     batch_x, batch_y, pred_y,
@@ -352,7 +352,7 @@ class Exp:
                     batch_y = batch_y.to(self.device)
                     
                     # Generate predictions
-                    pred_y = self.model(batch_x)[:, :self.output_frames,:,:]
+                    pred_y = self.model(batch_x)[:, :batch_y.shape[1],:,:]
                     
                     # Calculate loss
                     loss = self.criterion(pred_y, batch_y)
