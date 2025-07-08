@@ -111,8 +111,8 @@ class Exp:
         return self.optimizer
 
     def _select_criterion(self):
-        self.criterion = torch.nn.MSELoss()
-        # self.criterion = nn.SmoothL1Loss()
+        # self.criterion = torch.nn.MSELoss()
+        self.criterion = nn.SmoothL1Loss()
 
     def _save(self, name=''):
         torch.save(self.model.state_dict(), os.path.join(

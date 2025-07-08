@@ -56,6 +56,11 @@ def process_video_with_yolo(video_path, yolo_model_path):
     frame_count = 0
     aggregated_count = 0
 
+    def normalize_last_frame(frame):
+        # Normalize the last frame to [0,1] range
+        last_frame = frame.copy().astype(np.float32) / 255.0
+        return last_frame
+
     while True:
         ret, frame = cap.read()
         if not ret:
@@ -78,7 +83,9 @@ def process_video_with_yolo(video_path, yolo_model_path):
 
         frame_buffer.append((frame, mask))
         if is_agg:
-            frames.append(frame)
+            # We'll use the last frame as-is - this preserves the background and vehicles
+            processed_frame = normalize_last_frame(frame)
+            frames.append(processed_frame)
         elif len(frame_buffer) == window_size:
             # Generate the aggregated mask from all frames in the buffer
             aggregated_mask = frame_buffer[0][1]
@@ -89,11 +96,7 @@ def process_video_with_yolo(video_path, yolo_model_path):
             for i in range(window_size):
                 refined_mask = cv2.bitwise_and(refined_mask, frame_buffer[i][1])
 
-            # Normalize the last frame to [0,1] range
-            last_frame = frame_buffer[-1][0].copy().astype(np.float32) / 255.0
-
-            # We'll use the last frame as-is - this preserves the background and vehicles
-            processed_frame = last_frame
+            processed_frame = normalize_last_frame(frame_buffer[-1][0])
 
             frames.append(processed_frame)
 
@@ -318,7 +321,7 @@ def load_data(batch_size, val_batch_size, data_root, num_workers, input_frames, 
     
     print(f"DEBUG: Total frames processed: {len(frames)}")
     
-    lead_time = 0
+    lead_time = 1
     # Split data
     # need to change size of train/test/val according to the input size and stride
     stride = 2 
