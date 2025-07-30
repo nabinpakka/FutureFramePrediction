@@ -18,8 +18,8 @@ def save_frames_as_video(frames, video_path, agg_path):
     output_path = os.path.join(output_dir, output)
 
     first_frame = frames[0]
-    if len(first_frame.shape) == 2:
-        first_frame = cv2.cvtColor(first_frame, cv2.COLOR_GRAY2BGR)
+    #if len(first_frame.shape) == 2:
+    #    first_frame = cv2.cvtColor(first_frame, cv2.COLOR_GRAY2BGR)
     _, height, width = first_frame.shape
 
     fps = 24
@@ -78,7 +78,7 @@ def process_video_with_yolo(video_path, yolo_model_path):
         if not ret:
             break
         orig_h, orig_w = frame.shape[:2]
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        #frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
         # Resize frame to 512x512
         frame = cv2.resize(frame, (512, 512))
