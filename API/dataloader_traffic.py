@@ -3,11 +3,12 @@ from torch.utils.data import Dataset, DataLoader, random_split
 import os
 import cv2
 import numpy as np
+from itertools import accumulate
 from ultralytics import YOLO
 
-def save_frames_as_video(frames, video_path):
+def save_frames_as_video(frames, video_path, agg_path):
     video_name = os.path.basename(video_path)
-    output_dir = os.path.dirname(video_path)
+    output_dir = agg_path
 
     name, ext = os.path.splitext(video_name)
     if ext.lower() not in ['.mp4', '.avi', '.mov']:
@@ -38,10 +39,21 @@ def save_frames_as_video(frames, video_path):
 
 def process_video_with_yolo(video_path, yolo_model_path):
 
+    agg_path = os.path.join(os.path.dirname(video_path), 'agg/')
+    agg_entries = []
+    if not os.path.exists(agg_path):
+        os.mkdir(agg_path)
+    else:
+        agg_entries = [f.replace('_agg', '') for f in os.listdir(agg_path) if os.path.isfile(os.path.join(agg_path, f)) and f.endswith('_agg.mp4')]
+
     # if the video file contains "_agg", then the video is already aggregated. So, a flag to skip the aggregation part
     is_agg = False
-    if "_agg" in video_path:
+    if os.path.basename(video_path) in agg_entries:
         is_agg = True
+        video_path = os.path.join(agg_path, os.path.basename(video_path).replace('.mp4', '_agg.mp4'))
+    #if "_agg" in video_path:
+    #    is_agg = True
+
 
     cap = cv2.VideoCapture(video_path)
     frames = []
@@ -49,7 +61,7 @@ def process_video_with_yolo(video_path, yolo_model_path):
 
     model = YOLO(yolo_model_path)
     model.verbose = False
-    output_dir = "/home/nabin/research/traffic/trafficeFramePrediction/FutureFramePrediction/visualizations"
+    output_dir = "./visualizations"
     os.makedirs(output_dir, exist_ok=True)
     window_size = 30
 
@@ -132,7 +144,7 @@ def process_video_with_yolo(video_path, yolo_model_path):
     frames = frames.transpose(0, 3, 1, 2)  # Shape: [N, C=3, H, W]
 
     if not is_agg:
-        save_frames_as_video(frames, video_path)
+        save_frames_as_video(frames, video_path, agg_path)
 
     print("Actual frames:", frame_count)
     print("Total processed aggregated frames:", len(frames))
@@ -268,71 +280,125 @@ def process_video(
 class TrafficVideoDataset(Dataset):
     def __init__(self, data, input_frames=20, output_frames=20, lead_time=10, stride = 2):
         super(TrafficVideoDataset, self).__init__()
-        self.data = torch.tensor(data, dtype=torch.float32)
+
+        self.videos = [torch.tensor(vid, dtype=torch.float32) for vid in data]
+
+        #self.data = torch.tensor(data, dtype=torch.float32)
         self.input_frames = input_frames
         self.output_frames = output_frames
         self.lead_time = lead_time
 
-        self.stride = 2  # STEP SIZE
-        
+        self.stride = 6  # STEP SIZE
+
+        self.total_frames = self.input_frames + self.output_frames + self.lead_time
+
+        self.indices = []
+        for vid_idx, video in enumerate(self.videos):
+            T = video.shape[0]
+            for t in range(0, T - self.total_frames + 1, self.stride):
+                print("added to indices")
+                self.indices.append((vid_idx, t))
+
         # Add mean and std attributes
-        self.mean = torch.mean(self.data).item()
-        self.std = torch.std(self.data).item()
+        #self.mean = torch.mean(self.data).item()
+        #self.std = torch.std(self.data).item()
         
-        print(f"Dataset initialized with shape: {self.data.shape}")
-        print(f"Dataset mean: {self.mean}, std: {self.std}")
+        #print(f"Dataset initialized with shape: {self.data.shape}")
+        #print(f"Dataset mean: {self.mean}, std: {self.std}")
         
     def __len__(self):
-        total_frames = self.input_frames + self.output_frames + self.lead_time
-        return max(0, (len(self.data) - total_frames) // self.stride)
+        #total_frames = self.input_frames + self.output_frames + self.lead_time
+        #return max(0, (len(self.data) - total_frames) // self.stride)
         # return max(0, len(self.data) - (self.input_frames + self.output_frames + self.lead_time))
+        return len(self.indices)
     
     def __getitem__(self, index):
-        index = index * self.stride  # Use step size to skip frames
-        print("The index is: ", index)
+        #index = index * self.stride  # Use step size to skip frames
+        vid_idx, t = self.indices[index]
+        data = self.videos[vid_idx]
+
+        print("The index is: ", t)
 
         # Get sequences from the dataset
-        input_sequence = self.data[index:index + self.input_frames]
+        input_sequence = data[t : t + self.input_frames]
 
         # adjusting the frame indexes based on the lead time
-        # if (len(self.data) - 1) < index + self.input_frames + self.lead_time + self.output_frames:
-        #     index = index
-        target_start =  index + self.input_frames + self.lead_time
+        # if (len(data) - 1) < t + self.input_frames + self.lead_time + self.output_frames:
+        #     t = t
+        target_start =  t + self.input_frames + self.lead_time
         target_end = target_start + self.output_frames
 
         # changes made to predict only 2 frames with overlapping
-        target_sequence = self.data[target_start: target_end]
+        target_sequence = data[target_start: target_end]
 
         #TODO asserting no overlapping but we want overlapping
         # assert not torch.equal(input_sequence[-1], target_sequence[0]), "Input and target sequences overlap"
         
         return input_sequence, target_sequence
 
-def load_data(batch_size, val_batch_size, data_root, num_workers, input_frames, output_frames):
-    video_path = os.path.join(data_root, 'traffic/vid_agg.mp4')
+def set_dataset_size(data_root, video_directory_path_local, yolo_model_path, video_quantity):
+    video_directory_path = os.path.join(data_root, video_directory_path_local)
+
+    videos = []
+
+    extension = ".mp4"
+    entries = [f for f in os.listdir(video_directory_path) if os.path.isfile(os.path.join(video_directory_path, f)) and f.endswith(extension)]
+    video_quantity = min(video_quantity, len(entries))
 
     # TODO either retrain the YOLO model for the blurr frames or make frames more readable
-    yolo_model_path = os.path.join(data_root, 'traffic/best_1.pt')
+    yolo_model_path = os.path.join(data_root, yolo_model_path)
 
+    for i in range(video_quantity):
+
+        video_path = os.path.join(video_directory_path ,entries[i])
+
+        # Process video with YOLO-based detection
+        frames = process_video_with_yolo(video_path, yolo_model_path)
+        videos.append(frames)
+
+    return videos
+
+
+def load_data(batch_size, val_batch_size, data_root, num_workers, input_frames, output_frames):
+    #video_path = os.path.join(data_root, 'traffic/vid_agg.mp4')
+
+    # TODO either retrain the YOLO model for the blurr frames or make frames more readable
+    #yolo_model_path = os.path.join(data_root, 'traffic/best_1.pt')
+
+    video_quantity = 3
+
+    videos = set_dataset_size(data_root, 'traffic/videos', 'traffic/best_1.pt', video_quantity)
     
     # Process video with YOLO-based detection
-    frames = process_video_with_yolo( video_path, yolo_model_path)
+    #frames = process_video_with_yolo( video_path, yolo_model_path)
 
-    
-    print(f"DEBUG: Total frames processed: {len(frames)}")
+
+    total_frames = sum(len(single_vid) for single_vid in videos)
+    print(f"DEBUG: Total frames processed: {total_frames}")
+    for i in range(len(videos)):
+        print(f"DEBUG: Video {i}: {len(videos[i])}")
     
     lead_time = 1
     # Split data
     # need to change size of train/test/val according to the input size and stride
-    stride = 2 
-    data_length = len(frames) // stride
-    train_size = int(0.6 * data_length)
-    val_size = int(0.2 * data_length)
-    test_size = data_length - train_size - val_size
+    stride = 6 
+
+    train_frames = []
+    val_frames = []
+    test_frames = []
+
+    for frames in videos:
+        data_length = len(frames) // stride
+        train_size = int(0.6 * data_length)
+        val_size = int(0.2 * data_length)
+
+        train_frames.append(frames[:train_size - lead_time])
+        val_frames.append(frames[train_size:train_size + val_size - lead_time])
+        test_frames.append(frames[train_size + val_size: -lead_time])
     
-    train_frames = frames[:train_size - lead_time]
-    val_frames = frames[train_size:train_size + val_size - lead_time]
-    test_frames = frames[train_size + val_size: -lead_time]
+    total_train_size = sum(len(single_vid) for single_vid in train_frames)
+    total_val_size = sum(len(single_vid) for single_vid in val_frames)
+    total_test_size = sum(len(single_vid) for single_vid in test_frames)
     
     print(f"DEBUG: Split sizes - Train: {len(train_frames)}, Val: {len(val_frames)}, Test: {len(test_frames)}")
     
